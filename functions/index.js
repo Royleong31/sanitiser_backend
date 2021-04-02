@@ -51,51 +51,93 @@ app.get("/usageData", async (req, res) => {
 app.patch("/:userId/:dispenserId/usage", async (req, res) => {
   const userId = req.params.userId;
   const dispenserId = req.params.dispenserId;
+  let dispenserData, docId;
 
-  db.collection("usageData").add({
-    dispenserId,
-    timeStamp: new Date().toISOString(),
-    userId,
-    wasUsed: true,
-  });
+  // let dispenserData = await db.collection("dispensers").doc(dispenserId).get();
 
-  let dispenserData = await db
-    .collection("dispensers")
-    .doc(dispenserId)
-    .get();
-
-  await db
+  let testData = await db
     .collection("dispensers")
     .where("dispenserId", "==", dispenserId)
-    .where("userId", "==", userId);
+    .where("userId", "==", userId)
+    .get();
 
-  console.log(dispenserData);
+  testData.forEach((doc) => {
+    console.log("Test Data");
+    docId = doc.id;
+    console.log(doc.id, "=>", doc.data());
+    dispenserData = doc.data();
+  });
 
-  dispenserData = dispenserData.data();
-  console.log(dispenserData["alert"]);
-  console.log(dispenserData["level"]);
-  console.log(dispenserData["useCount"]);
-
-  await db
-    .collection("dispensers")
-    .doc("testDoc")
-    .set({ title: "Testing title", body: "Testing body" });
+  if (!dispenserData) res.send("Invalid id"); //RETURN FUNCTION IF EITHER USER OR DISPENSER DOES NOT EXIST
 
   const limit = dispenserData["limit"];
   let newUseCount = 1 + dispenserData["useCount"];
-  newUseCount = newUseCount >= limit ? limit : newUseCount;
-  let newLevel = 100 - Math.round(100 * (newUseCount / limit));
-  newLevel = newLevel <= 0 ? 0 : newLevel;
+  // newUseCount = newUseCount >= limit ? limit : newUseCount;
 
-  const alert = newLevel <= 10 ? true : false;
+  if (newUseCount <= limit) {
+    db.collection("usageData").add({
+      dispenserId,
+      timeStamp: new Date().toISOString(),
+      userId,
+      wasUsed: true,
+    });
 
-  await db.collection("dispensers").doc(dispenserId).update({
-    useCount: newUseCount,
-    level: newLevel,
-    alert,
+    let newLevel = 100 - Math.round(100 * (newUseCount / limit));
+    const alert = newLevel <= 10 ? true : false;
+
+    await db.collection("dispensers").doc(docId).update({
+      useCount: newUseCount,
+      level: newLevel,
+      alert,
+    });
+
+    res.send(JSON.stringify({ dispenserData }));
+  } else {
+    res.send("Refill is already empty");
+    newUseCount = limit;
+  }
+});
+
+app.patch("/:userId/:dispenserId/reset", async (req, res) => {
+  const userId = req.params.userId;
+  const dispenserId = req.params.dispenserId;
+  let dispenserData, docId;
+
+  let testData = await db
+    .collection("dispensers")
+    .where("dispenserId", "==", dispenserId)
+    .where("userId", "==", userId)
+    .get();
+
+  testData.forEach((doc) => {
+    console.log("Test Data");
+    docId = doc.id;
+    console.log(doc.id, "=>", doc.data());
+    dispenserData = doc.data();
   });
 
-  res.send(JSON.stringify({ dispenserData }));
+  if (!dispenserData) res.send("Invalid id");
+
+  const level = dispenserData["level"];
+  
+  if (+level === 100) {
+    res.send("Refill is already full");
+  } else {
+    db.collection("usageData").add({
+      dispenserId,
+      timeStamp: new Date().toISOString(),
+      userId,
+      wasUsed: false,
+    });
+
+    await db.collection("dispensers").doc(docId).update({
+      useCount: 0,
+      level: 100,
+      alert: false,
+    });
+
+    res.send(JSON.stringify({ dispenserData }));
+  }
 });
 
 exports.usage = functions.https.onRequest(app);
