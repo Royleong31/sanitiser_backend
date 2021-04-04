@@ -8,45 +8,7 @@ const db = admin.firestore();
 
 const app = express();
 app.use(cors({ origin: true }));
-
-app.get("/users", async (req, res) => {
-  const snapshot = await db.collection("users").get();
-  let users = [];
-
-  snapshot.forEach((doc) => {
-    let id = doc.id;
-    let data = doc.data();
-    users.push({ id, ...data });
-  });
-
-  res.status(200).send(JSON.stringify(users));
-});
-
-app.get("/dispensers", async (req, res) => {
-  const snapshot = await db.collection("dispensers").get();
-  let users = [];
-
-  snapshot.forEach((doc) => {
-    let id = doc.id;
-    let data = doc.data();
-    users.push({ id, ...data });
-  });
-
-  res.status(200).send(JSON.stringify(users));
-});
-
-app.get("/usageData", async (req, res) => {
-  const snapshot = await db.collection("usageData").get();
-  let users = [];
-
-  snapshot.forEach((doc) => {
-    let id = doc.id;
-    let data = doc.data();
-    users.push({ id, ...data });
-  });
-
-  res.status(200).send(JSON.stringify(users));
-});
+var newData;
 
 app.patch("/:userId/:dispenserId/usage", async (req, res) => {
   const userId = req.params.userId;
@@ -71,6 +33,7 @@ app.patch("/:userId/:dispenserId/usage", async (req, res) => {
   if (!dispenserData) res.send("Invalid id"); //RETURN FUNCTION IF EITHER USER OR DISPENSER DOES NOT EXIST
 
   const limit = dispenserData["limit"];
+  const location = dispenserData["location"];
   let newUseCount = 1 + dispenserData["useCount"];
   // newUseCount = newUseCount >= limit ? limit : newUseCount;
 
@@ -82,7 +45,7 @@ app.patch("/:userId/:dispenserId/usage", async (req, res) => {
       wasUsed: true,
     });
 
-    let newLevel = 100 - Math.round(100 * (newUseCount / limit));
+    let newLevel = 100 - Math.round(100 * (newUseCount / limit)); //if newUseCount == 100, newLevel = 0
     const alert = newLevel <= 10 ? true : false;
 
     await db.collection("dispensers").doc(docId).update({
@@ -90,6 +53,41 @@ app.patch("/:userId/:dispenserId/usage", async (req, res) => {
       level: newLevel,
       alert,
     });
+
+    if (
+      newUseCount == limit ||
+      newUseCount == limit - Math.round(0.1 * limit)
+    ) {
+      let bodyText =
+        newLevel == 0
+          ? `${location} refill is empty`
+          : `${location} refill is under 10%`;
+
+      let payload = {
+        notification: {
+          title: "Refill Low",
+          body: bodyText,
+        },
+        data: {
+          body: `${location} refill is at ${newLevel}%`,
+          title: "Refill Low",
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+      };
+
+      try {
+        const response = await admin
+          .messaging()
+          .sendToDevice(
+            [
+              "cWPyIZl5QYia6bIG001eHO:APA91bFtLOakigUqA15GlwyI36Ob2qk69ivxlj0MPdPRGNBIfZNydgNfTEblLlfQlCoxNZ6rC9xnJpJDoaYWLUcWIeSXyjsYConz0gWNhVcnHg_tLin2HzuAR2LmF0vw61qOSmv__oSa",
+            ],
+            payload
+          );
+      } catch {
+        console.log("Error sending notification");
+      }
+    }
 
     res.send(JSON.stringify({ dispenserData }));
   } else {
@@ -119,7 +117,8 @@ app.patch("/:userId/:dispenserId/reset", async (req, res) => {
   if (!dispenserData) res.send("Invalid id");
 
   const level = dispenserData["level"];
-  
+  const location = dispenserData["location"];
+
   if (+level === 100) {
     res.send("Refill is already full");
   } else {
@@ -129,6 +128,31 @@ app.patch("/:userId/:dispenserId/reset", async (req, res) => {
       userId,
       wasUsed: false,
     });
+
+    let payload = {
+      notification: {
+        // title: "Refill",
+        title: `${location} unit has been refilled`,
+      },
+      data: {
+        title: `${location} unit was refilled`,
+        // body: `${location} refill is at ${newLevel}%`,
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+    };
+
+    try {
+      const response = await admin
+        .messaging()
+        .sendToDevice(
+          [
+            "cWPyIZl5QYia6bIG001eHO:APA91bFtLOakigUqA15GlwyI36Ob2qk69ivxlj0MPdPRGNBIfZNydgNfTEblLlfQlCoxNZ6rC9xnJpJDoaYWLUcWIeSXyjsYConz0gWNhVcnHg_tLin2HzuAR2LmF0vw61qOSmv__oSa",
+          ],
+          payload
+        );
+    } catch {
+      console.log("Error sending notification");
+    }
 
     await db.collection("dispensers").doc(docId).update({
       useCount: 0,
@@ -141,3 +165,75 @@ app.patch("/:userId/:dispenserId/reset", async (req, res) => {
 });
 
 exports.usage = functions.https.onRequest(app);
+
+// app.get("/users", async (req, res) => {
+//   const snapshot = await db.collection("users").get();
+//   let users = [];
+
+//   snapshot.forEach((doc) => {
+//     let id = doc.id;
+//     let data = doc.data();
+//     users.push({ id, ...data });
+//   });
+
+//   res.status(200).send(JSON.stringify(users));
+// });
+
+// app.get("/dispensers", async (req, res) => {
+//   const snapshot = await db.collection("dispensers").get();
+//   let users = [];
+
+//   snapshot.forEach((doc) => {
+//     let id = doc.id;
+//     let data = doc.data();
+//     users.push({ id, ...data });
+//   });
+
+//   res.status(200).send(JSON.stringify(users));
+// });
+
+// app.get("/usageData", async (req, res) => {
+//   const snapshot = await db.collection("usageData").get();
+//   let users = [];
+
+//   snapshot.forEach((doc) => {
+//     let id = doc.id;
+//     let data = doc.data();
+//     users.push({ id, ...data });
+//   });
+
+//   res.status(200).send(JSON.stringify(users));
+// });
+
+// exports.messageTrigger = functions.firestore
+//   .document("Messages/{messageId}")
+//   .onCreate(async (snapshot, context) => {
+//     if (snapshot.empty) {
+//       console.log("No devices");
+//       return;
+//     }
+
+//     newData = snapshot.data;
+//     var payload = {
+//       notification: { title: "Push title", body: "Push body" },
+//       data: {
+//         message: "Message",
+//         body: "Body",
+//         title: "Titlte",
+//         click_action: "FLUTTER_NOTIFICATION_CLICK",
+//       },
+//     };
+
+//     try {
+//       const response = await admin
+//         .messaging()
+//         .sendToDevice(
+//           [
+//             "cWPyIZl5QYia6bIG001eHO:APA91bFtLOakigUqA15GlwyI36Ob2qk69ivxlj0MPdPRGNBIfZNydgNfTEblLlfQlCoxNZ6rC9xnJpJDoaYWLUcWIeSXyjsYConz0gWNhVcnHg_tLin2HzuAR2LmF0vw61qOSmv__oSa",
+//           ],
+//           payload
+//         );
+//     } catch {
+//       console.log("Error sending notification");
+//     }
+//   });
