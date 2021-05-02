@@ -10,27 +10,47 @@ const app = express();
 app.use(cors({ origin: true }));
 var newData;
 
-app.patch("/:userId/:dispenserId/usage", async (req, res) => {
-  const userId = req.params.userId;
+app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
   const dispenserId = req.params.dispenserId;
-  let dispenserData, docId;
+  let dispenserData, dispenserDocId;
+  const companyId = req.params.companyId; 
 
   // let dispenserData = await db.collection("dispensers").doc(dispenserId).get();
-
-  let testData = await db
+  console.log(`Dispenser ID: ${dispenserId}`);
+  console.log(`Company ID: ${companyId}`);
+  // SHOULD RETURN ONLY 1 DOC
+  let dispenserInfo = await db
     .collection("dispensers")
     .where("dispenserId", "==", dispenserId)
-    .where("userId", "==", userId)
+    .where("companyId", "==", companyId) // change to companyId == companyId
     .get();
 
-  testData.forEach((doc) => {
-    console.log("Test Data");
-    docId = doc.id;
-    console.log(doc.id, "=>", doc.data());
+  dispenserInfo.forEach((doc) => {
+    dispenserDocId = doc.id;
     dispenserData = doc.data();
   });
 
-  if (!dispenserData) res.send("Invalid id"); //RETURN FUNCTION IF EITHER USER OR DISPENSER DOES NOT EXIST
+  console.log(`DispenserDocId : ${dispenserDocId}`);
+  console.log(`DispenserData : ${dispenserData}`);
+
+  if (!dispenserData) res.status(400).send("Invalid user ID or dispenser ID");
+
+
+  let companyInfo = await db.collection('companies').doc(companyId).get();
+  let companyData = companyInfo.data();
+  let users = companyData['users'];
+
+  let userData = [];
+  let userInfo = await db
+    .collection("users")
+    .where("companyId", "==", companyId)
+    .get();
+
+  userInfo.forEach(doc => userData.push(doc.data()));
+  userData.forEach((doc) => { // TODO: change to map function
+    console.log(`User notification Level: ${doc['notificationLevel']}`);
+  });
+
 
   const limit = dispenserData["limit"];
   const location = dispenserData["location"];
@@ -41,80 +61,119 @@ app.patch("/:userId/:dispenserId/usage", async (req, res) => {
     db.collection("usageData").add({
       dispenserId,
       timeStamp: new Date().toISOString(),
-      userId,
+      companyId,
       wasUsed: true,
     });
 
     let newLevel = 100 - Math.round(100 * (newUseCount / limit)); //if newUseCount == 100, newLevel = 0
-    const alert = newLevel <= 10 ? true : false;
 
-    await db.collection("dispensers").doc(docId).update({
+    await db.collection("dispensers").doc(dispenserDocId).update({
       useCount: newUseCount,
       level: newLevel,
-      alert,
     });
 
-    if (
-      newUseCount == limit ||
-      newUseCount == limit - Math.round(0.1 * limit)
-    ) {
-      let bodyText =
-        newLevel == 0
-          ? `${location} refill is empty`
-          : `${location} refill is under 10%`;
+    for (let user of userData) {
+      const userDeviceList = user['deviceTokens'];
+      const notificationLevel = +user['notificationLevel'];
+      console.log(`USER: DEVICE LIST: ${userDeviceList}`);
+      console.log(`USER: NOTIFICATION LEVEL: ${notificationLevel}`);
+      
+      if (
+        newUseCount == limit ||
+        newUseCount == limit - Math.round(notificationLevel / 100 * limit) // send notification at 1 below the threshold
+      ) {
+        console.log(`Triggering cloud messaging for usage as newUseCount = ${newUseCount}`);
 
-      let payload = {
-        notification: {
-          title: "Refill Low",
-          body: bodyText,
-        },
-        data: {
-          body: `${location} refill is at ${newLevel}%`,
-          title: "Refill Low",
-          click_action: "FLUTTER_NOTIFICATION_CLICK",
-        },
-      };
+        let bodyText =
+          newLevel == 0
+            ? `${location} refill is empty`
+            : `${location} refill is under ${notificationLevel}%`; // change to below notification set level
 
-      try {
-        const response = await admin
-          .messaging()
-          .sendToDevice(
-            [
-              "cWPyIZl5QYia6bIG001eHO:APA91bFtLOakigUqA15GlwyI36Ob2qk69ivxlj0MPdPRGNBIfZNydgNfTEblLlfQlCoxNZ6rC9xnJpJDoaYWLUcWIeSXyjsYConz0gWNhVcnHg_tLin2HzuAR2LmF0vw61qOSmv__oSa",
-            ],
-            payload
-          );
-      } catch {
-        console.log("Error sending notification");
+        let payload = {
+          notification: {
+            title: "Refill Low",
+            body: bodyText,
+          },
+          data: {
+            body: `${location} refill is at ${newLevel}%`,
+            title: "Refill Low",
+            click_action: "FLUTTER_NOTIFICATION_CLICK",
+          },
+        };
+
+        try {
+          const response = await admin
+            .messaging()
+            .sendToDevice(
+              userDeviceList,
+              payload
+            );
+        } catch {
+          console.log("Error sending notification");
+        }
       }
+
     }
+
 
     res.send(JSON.stringify({ dispenserData }));
   } else {
     res.send("Refill is already empty");
-    newUseCount = limit;
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 app.patch("/:userId/:dispenserId/reset", async (req, res) => {
   const userId = req.params.userId;
   const dispenserId = req.params.dispenserId;
-  let dispenserData, docId;
+  let dispenserData, dispenserDocId;
 
-  let testData = await db
+  let dispenserInfo = await db
     .collection("dispensers")
     .where("dispenserId", "==", dispenserId)
     .where("userId", "==", userId)
     .get();
 
-  testData.forEach((doc) => {
+  dispenserInfo.forEach((doc) => {
     console.log("Test Data");
-    docId = doc.id;
+    dispenserDocId = doc.id;
     console.log(doc.id, "=>", doc.data());
     dispenserData = doc.data();
   });
 
-  if (!dispenserData) res.send("Invalid id");
+  let userInfo = await db
+    .collection("users")
+    .where("userId", "==", userId)
+    .get();
+
+  userInfo.forEach((doc) => {
+    console.log("User Info");
+    userDocId = doc.id;
+    console.log("User Info", doc.id, "=>", doc.data());
+    userData = doc.data();
+  });
+
+  let userDeviceList = userData['deviceTokens'];
+  let notifyWhenRefilled = userData['notifyWhenRefilled'];
+
+   if (!dispenserData) res.status(400).send("Invalid user or dispenser ID");
 
   const level = dispenserData["level"];
   const location = dispenserData["location"];
@@ -132,32 +191,34 @@ app.patch("/:userId/:dispenserId/reset", async (req, res) => {
     let payload = {
       notification: {
         // title: "Refill",
-        title: `${location} unit has been refilled`,
+        title: `${location} refilled`,
+        body: `${location} unit has been refilled`,
       },
       data: {
         title: `${location} unit was refilled`,
-        // body: `${location} refill is at ${newLevel}%`,
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
     };
 
-    try {
-      const response = await admin
-        .messaging()
-        .sendToDevice(
-          [
-            "cWPyIZl5QYia6bIG001eHO:APA91bFtLOakigUqA15GlwyI36Ob2qk69ivxlj0MPdPRGNBIfZNydgNfTEblLlfQlCoxNZ6rC9xnJpJDoaYWLUcWIeSXyjsYConz0gWNhVcnHg_tLin2HzuAR2LmF0vw61qOSmv__oSa",
-          ],
-          payload
-        );
-    } catch {
-      console.log("Error sending notification");
+    if (notifyWhenRefilled) {
+      try {
+        console.log("sending reset notification");
+        const response = await admin
+          .messaging()
+          .sendToDevice(
+            userDeviceList,
+            payload
+          );
+      } catch {
+        console.log("Error sending notification");
+      }
     }
 
-    await db.collection("dispensers").doc(docId).update({
+
+    await db.collection("dispensers").doc(dispenserDocId).update({
       useCount: 0,
       level: 100,
-      alert: false,
+      // alert: false,
     });
 
     res.send(JSON.stringify({ dispenserData }));
@@ -166,74 +227,3 @@ app.patch("/:userId/:dispenserId/reset", async (req, res) => {
 
 exports.usage = functions.https.onRequest(app);
 
-// app.get("/users", async (req, res) => {
-//   const snapshot = await db.collection("users").get();
-//   let users = [];
-
-//   snapshot.forEach((doc) => {
-//     let id = doc.id;
-//     let data = doc.data();
-//     users.push({ id, ...data });
-//   });
-
-//   res.status(200).send(JSON.stringify(users));
-// });
-
-// app.get("/dispensers", async (req, res) => {
-//   const snapshot = await db.collection("dispensers").get();
-//   let users = [];
-
-//   snapshot.forEach((doc) => {
-//     let id = doc.id;
-//     let data = doc.data();
-//     users.push({ id, ...data });
-//   });
-
-//   res.status(200).send(JSON.stringify(users));
-// });
-
-// app.get("/usageData", async (req, res) => {
-//   const snapshot = await db.collection("usageData").get();
-//   let users = [];
-
-//   snapshot.forEach((doc) => {
-//     let id = doc.id;
-//     let data = doc.data();
-//     users.push({ id, ...data });
-//   });
-
-//   res.status(200).send(JSON.stringify(users));
-// });
-
-// exports.messageTrigger = functions.firestore
-//   .document("Messages/{messageId}")
-//   .onCreate(async (snapshot, context) => {
-//     if (snapshot.empty) {
-//       console.log("No devices");
-//       return;
-//     }
-
-//     newData = snapshot.data;
-//     var payload = {
-//       notification: { title: "Push title", body: "Push body" },
-//       data: {
-//         message: "Message",
-//         body: "Body",
-//         title: "Titlte",
-//         click_action: "FLUTTER_NOTIFICATION_CLICK",
-//       },
-//     };
-
-//     try {
-//       const response = await admin
-//         .messaging()
-//         .sendToDevice(
-//           [
-//             "cWPyIZl5QYia6bIG001eHO:APA91bFtLOakigUqA15GlwyI36Ob2qk69ivxlj0MPdPRGNBIfZNydgNfTEblLlfQlCoxNZ6rC9xnJpJDoaYWLUcWIeSXyjsYConz0gWNhVcnHg_tLin2HzuAR2LmF0vw61qOSmv__oSa",
-//           ],
-//           payload
-//         );
-//     } catch {
-//       console.log("Error sending notification");
-//     }
-//   });
