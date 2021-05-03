@@ -11,9 +11,9 @@ app.use(cors({ origin: true }));
 var newData;
 
 app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
+  const companyId = req.params.companyId; 
   const dispenserId = req.params.dispenserId;
   let dispenserData, dispenserDocId;
-  const companyId = req.params.companyId; 
 
   // let dispenserData = await db.collection("dispensers").doc(dispenserId).get();
   console.log(`Dispenser ID: ${dispenserId}`);
@@ -33,8 +33,10 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
   console.log(`DispenserDocId : ${dispenserDocId}`);
   console.log(`DispenserData : ${dispenserData}`);
 
-  if (!dispenserData) res.status(400).send("Invalid user ID or dispenser ID");
-
+  if (!dispenserData) {
+    res.status(400).send("Invalid user ID or dispenser ID");
+    return;
+  }
 
   let companyInfo = await db.collection('companies').doc(companyId).get();
   let companyData = companyInfo.data();
@@ -47,7 +49,7 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
     .get();
 
   userInfo.forEach(doc => userData.push(doc.data()));
-  userData.forEach((doc) => { // TODO: change to map function
+  userData.forEach((doc) => { 
     console.log(`User notification Level: ${doc['notificationLevel']}`);
   });
 
@@ -80,14 +82,14 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
       
       if (
         newUseCount == limit ||
-        newUseCount == limit - Math.round(notificationLevel / 100 * limit) // send notification at 1 below the threshold
+        newUseCount == Math.ceil(limit - notificationLevel / 100 * limit) // send notification at 1 below the threshold
       ) {
         console.log(`Triggering cloud messaging for usage as newUseCount = ${newUseCount}`);
 
         let bodyText =
           newLevel == 0
             ? `${location} refill is empty`
-            : `${location} refill is under ${notificationLevel}%`; // change to below notification set level
+            : `${location} refill is under ${notificationLevel}%`; // !change to below notification set level
 
         let payload = {
           notification: {
@@ -140,40 +142,45 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
 
 
 
-app.patch("/:userId/:dispenserId/reset", async (req, res) => {
-  const userId = req.params.userId;
+app.patch("/:companyId/:dispenserId/reset", async (req, res) => {
+  const companyId = req.params.companyId;
   const dispenserId = req.params.dispenserId;
   let dispenserData, dispenserDocId;
 
   let dispenserInfo = await db
     .collection("dispensers")
     .where("dispenserId", "==", dispenserId)
-    .where("userId", "==", userId)
+    .where("companyId", "==", companyId)
     .get();
 
+  // ONLY 1 SUCH DISPENSER
   dispenserInfo.forEach((doc) => {
-    console.log("Test Data");
     dispenserDocId = doc.id;
-    console.log(doc.id, "=>", doc.data());
     dispenserData = doc.data();
   });
 
+  console.log(`DispenserDocId : ${dispenserDocId}`);
+  console.log(`DispenserData : ${dispenserData}`);
+
+  if (!dispenserData) {
+    res.status(400).send("Invalid user ID or dispenser ID");
+    return;
+  } 
+
+  let companyInfo = await db.collection('companies').doc(companyId).get();
+  let companyData = companyInfo.data();
+  let users = companyData['users'];
+  let userData = [];
+
   let userInfo = await db
     .collection("users")
-    .where("userId", "==", userId)
+    .where("companyId", "==", companyId)
     .get();
 
-  userInfo.forEach((doc) => {
-    console.log("User Info");
-    userDocId = doc.id;
-    console.log("User Info", doc.id, "=>", doc.data());
-    userData = doc.data();
+  userInfo.forEach(doc => userData.push(doc.data()));
+  userData.forEach((doc) => { 
+    console.log(`User notifyWhenRefilled: ${doc['notifyWhenRefilled']}`);
   });
-
-  let userDeviceList = userData['deviceTokens'];
-  let notifyWhenRefilled = userData['notifyWhenRefilled'];
-
-   if (!dispenserData) res.status(400).send("Invalid user or dispenser ID");
 
   const level = dispenserData["level"];
   const location = dispenserData["location"];
@@ -181,46 +188,51 @@ app.patch("/:userId/:dispenserId/reset", async (req, res) => {
   if (+level === 100) {
     res.send("Refill is already full");
   } else {
-    db.collection("usageData").add({
-      dispenserId,
-      timeStamp: new Date().toISOString(),
-      userId,
-      wasUsed: false,
-    });
-
-    let payload = {
-      notification: {
-        // title: "Refill",
-        title: `${location} refilled`,
-        body: `${location} unit has been refilled`,
-      },
-      data: {
-        title: `${location} unit was refilled`,
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
-      },
-    };
-
-    if (notifyWhenRefilled) {
-      try {
-        console.log("sending reset notification");
-        const response = await admin
-          .messaging()
-          .sendToDevice(
-            userDeviceList,
-            payload
-          );
-      } catch {
-        console.log("Error sending notification");
-      }
-    }
-
 
     await db.collection("dispensers").doc(dispenserDocId).update({
       useCount: 0,
       level: 100,
-      // alert: false,
     });
 
+    db.collection("usageData").add({
+      dispenserId,
+      timeStamp: new Date().toISOString(),
+      companyId,
+      wasUsed: false,
+    });
+
+    for (let user of userData) {
+      const userDeviceList = user['deviceTokens'];
+      const notifyWhenRefilled = user['notifyWhenRefilled'];
+      console.log(`USER: DEVICE LIST: ${userDeviceList}`);
+      console.log(`USER: NOTIFYWHENREFILLED: ${notifyWhenRefilled}`);
+
+      let payload = {
+        notification: {
+          title: `${location} refilled`,
+          body: `${location} unit has been refilled`,
+        },
+        data: {
+          title: `${location} unit was refilled`,
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+      };
+
+      if (notifyWhenRefilled) {
+        try {
+          console.log("sending reset notification");
+          const response = await admin
+            .messaging()
+            .sendToDevice(
+              userDeviceList,
+              payload
+            );
+        } catch (err) {
+          console.log(`Error sending notification, ERROR: ${err}`);
+        }
+      }
+
+    }
     res.send(JSON.stringify({ dispenserData }));
   }
 });
