@@ -1,12 +1,13 @@
 # Sanitiser Backend
 - The code for the APIs are in the functions/index.js
 - There are 2 APIs, 1 for resetting and 1 for indicating that a dispenser was used.
-- As the gateway does not check if the dispenserId and companyId are valid, all the checks are done on the backend. Both APIs will reject the request if the companyId or dispenserId are incorrect
+- As the gateway does not check if the dispenserId and companyId are valid, all the checks are done on the backend. Both APIs will reject the request if the companyId or dispenserId is incorrect
 - More details on the specific workings of each API can be found in the comments in the code in the index.js file
 - It uses a serverless architecture using Firebase Cloud Functions, Firebase Firestore and Firebase Cloud Messaging
+- You will need to deploy the code on your account as it is currently on my personal account. Just use the code, modify it if necessary and upload it onto another Firebase account.
 
 ## Database Architecture
-- There are 3 main groups: Companies, Users, and dispensers.
+- There are 3 collections: Companies, Users, and dispensers.
 - Each company has many dispensers
 - Each company has many users 
 
@@ -61,4 +62,11 @@
 ## Reset API
 - The database will be updated by adding a document to usageData and updating the dispenserLevel in the dispenser document
 - A notification will be sent to mobile apps that are currently logged into the same company that the dispenser belongs to and indicated that they want to be notified when the dispenser is refilled. (notifyWhenRefilled == true)
-    
+
+
+## Potential Improvements
+- Whenever usage/reset data is sent, in addition to the companyId, dispenserId and typeOfUsage, the battery percentage can also be sent. This allows the users to see the refill level and battery level of each dispenser.
+- Currently, the API requests are quite slow, taking about 2-4s to complete. Perhaps the code could be modified to make it faster.
+- The companyId, dispenserId and typeOfUsage are currently stored directly in the url. They should ideally be stored in the body to improve security.
+- In the event that multiple gateways are used, the gateways may receive the same packet and send multiple API requests for each usage of the dispenser. This can be solved by attaching an ID to each usage, and ensuring that each unique usage is only recorded once. This has to be done server side as the individual gateways will not know about the packets that other gateways receive.
+- API keys could be used to ensure that only users with permission can access the API, improving security.
