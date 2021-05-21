@@ -10,6 +10,7 @@ const app = express();
 app.use(cors({ origin: true }));
 var newData;
 
+// Usage API
 app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
   const companyId = req.params.companyId; 
   const dispenserId = req.params.dispenserId;
@@ -141,7 +142,7 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
 
 
 
-
+// Resetting API
 app.patch("/:companyId/:dispenserId/reset", async (req, res) => {
   const companyId = req.params.companyId;
   const dispenserId = req.params.dispenserId;
