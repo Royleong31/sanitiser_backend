@@ -6,16 +6,20 @@
 - More details on the specific workings of each API can be found in the comments in the code in the index.js file
 
 ## Database Architecture
-    - There are 3 main parties: Companies, Users, and dispensers.
-    - Each company has many dispensers
-    - Each company has many users 
+- There are 3 main parties: Companies, Users, and dispensers.
+- Each company has many dispensers
+- Each company has many users 
 - When dispenser is refilled/refill running low, notifications will be sent to the users that are registered to the same company as that dispenser
 
 
 ### Tables 
 1) usageData
-    - Stores
+    Stores a new document every time dispensers are used or refilled
+    Stores details of the dispenser, time, and the type of usage (whether is was used or refilled) 
+    If dispenser was used, wasUsed == true, if dispenser was refilled, wasUsed == false
+    
 2) users
+    
 3) dispensers
 4) companies
 
