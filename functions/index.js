@@ -90,10 +90,12 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
           newLevel == 0
             ? `${location} refill is empty`
             : `${location} refill is under ${notificationLevel}%`; // !change to below notification set level
+        
+        let notificationTitle = newLevel == 0 ? 'Refill Empty' : 'Refill Low';
 
         let payload = {
           notification: {
-            title: "Refill Low",
+            title: notificationTitle,
             body: bodyText,
           },
           data: {
@@ -123,24 +125,6 @@ app.patch("/:companyId/:dispenserId/usage", async (req, res) => {
     res.send("Refill is already empty");
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 app.patch("/:companyId/:dispenserId/reset", async (req, res) => {
   const companyId = req.params.companyId;
