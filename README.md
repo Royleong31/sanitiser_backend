@@ -71,3 +71,10 @@
 - In the event that multiple gateways are used, the gateways may receive the same packet and send multiple API requests for each usage of the dispenser. This can be solved by attaching an ID to each usage, and ensuring that each unique usage is only recorded once. This has to be done server side as the individual gateways will not know about the packets that other gateways receive.
 - API keys could be used to ensure that only users with permission can access the API, improving security.
 - Can send notifications every preset interval. Such as when refill is at 20% and again at 10%.
+- During manufacturing, each dispenser will come with a unique dispenserId which users can key in when they add a new dispenser.
+    - Another collection that contains all dispensers can be created. There are 2 types of dispensers: those that have been registered and those that have not yet been registered.
+    - Documents in this new all dispensers collection can store 2 variables. isRegistered (BOOL) and companyId (STRING)
+    - When a dispenser is sold, a dispenser can be added to the collection as unregistered.
+    - When a user registers their dispenser, it changes from unregistered to registered.
+    - Users can delete dispensers, changing their status from registered to unregistered. They can then be registered to another company
+    - This makes it easier to keep track of all dispensers and prevents users from registering dispensers that are not manufactured by us
